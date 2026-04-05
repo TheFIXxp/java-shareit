@@ -15,6 +15,8 @@ public interface ItemRepository {
 
     Collection<Item> getByOwnerId(long ownerId);
 
+    Collection<Item> getAll();
+
     Collection<Item> searchAvailableByText(String text);
 }
 
