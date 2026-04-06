@@ -36,7 +36,10 @@ public class InMemoryItemRepository implements ItemRepository {
 
     @Override
     public Collection<Item> getByOwnerId(long ownerId) {
-        return this.items.values().stream().filter(item -> item.getOwnerId() != null && item.getOwnerId().equals(ownerId)).collect(Collectors.toList());
+        return this.items.values()
+                .stream()
+                .filter(item -> item.getOwnerId() != null && item.getOwnerId().equals(ownerId))
+                .collect(Collectors.toList());
     }
 
     @Override
@@ -47,7 +50,12 @@ public class InMemoryItemRepository implements ItemRepository {
     @Override
     public Collection<Item> searchAvailableByText(String text) {
         String searchText = text.toLowerCase();
-        return this.items.values().stream().filter(Item::getAvailable).filter(item -> containsIgnoreCase(item.getName(), searchText) || containsIgnoreCase(item.getDescription(), searchText)).collect(Collectors.toList());
+        return this.items.values()
+                .stream()
+                .filter(Item::getAvailable)
+                .filter(item -> containsIgnoreCase(item.getName(), searchText) ||
+                        containsIgnoreCase(item.getDescription(), searchText))
+                .collect(Collectors.toList());
     }
 
     private boolean containsIgnoreCase(String value, String searchText) {

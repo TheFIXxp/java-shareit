@@ -4,6 +4,7 @@ import jakarta.validation.ValidationException;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import ru.practicum.shareit.exception.NotFoundException;
 import ru.practicum.shareit.exception.UserAlreadyExistsException;
@@ -16,6 +17,7 @@ import ru.practicum.shareit.user.service.UserService;
 import java.util.Collection;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
@@ -25,6 +27,7 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public UserDto createUser(UserDto userDto) {
+        log.info("Creating user {}", userDto);
         validateUserForCreate(userDto);
         validateEmailUniqueness(userDto.getEmail());
 
@@ -34,7 +37,9 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public UserDto updateUser(long userId, UserDto dto) {
-        User existingUser = userRepository.getById(userId).orElseThrow(() -> new NotFoundException("User with id %s not found".formatted(userId)));
+        log.info("Updating user {} with {}", userId, dto);
+        User existingUser = userRepository.getById(userId)
+                .orElseThrow(() -> new NotFoundException("User with id %s not found".formatted(userId)));
 
         if (dto.getName() != null) {
             if (dto.getName().isBlank()) {
@@ -56,16 +61,22 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public Collection<UserDto> getUsers() {
-        return userRepository.getAll().stream().map(UserMapper::toDto).collect(Collectors.toList());
+        log.info("Getting all users");
+        return userRepository.getAll()
+                .stream().map(UserMapper::toDto).collect(Collectors.toList());
     }
 
     @Override
     public UserDto getUserById(long userId) {
-        return this.userRepository.getById(userId).map(UserMapper::toDto).orElseThrow(() -> new NotFoundException("User with id %s not found".formatted(userId)));
+        log.info("Getting user by id {}", userId);
+        return this.userRepository.getById(userId)
+                .map(UserMapper::toDto)
+                .orElseThrow(() -> new NotFoundException("User with id %s not found".formatted(userId)));
     }
 
     @Override
     public void deleteUserById(long userId) {
+        log.info("Deleting user by id {}", userId);
         this.userRepository.deleteById(userId);
     }
 
