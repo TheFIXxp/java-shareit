@@ -76,6 +76,7 @@ public class ItemServiceImpl implements ItemService {
     @Override
     public Collection<ItemDto> getItemsByOwner(long userId) {
         log.info("Getting items by owner {}", userId);
+        validateUserExists(userId);
         return this.itemRepository.getByOwnerId(userId)
                 .stream()
                 .map(ItemMapper::toDto)
