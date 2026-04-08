@@ -1,0 +1,11 @@
+services:
+  postgres:
+    image: postgres:14.1-alpine
+    restart: always
+    environment:
+      - POSTGRES_DB=shareit
+      - POSTGRES_PASSWORD=shareit
+      - POSTGRES_USER=shareit
+      - PGDATA=/data/postgres
+    ports:
+      - '5432:5432'
