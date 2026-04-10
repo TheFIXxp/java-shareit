@@ -37,38 +37,46 @@ public class BookingServiceImpl implements BookingService {
     public BookingDto createBooking(BookingCreateDto createRequest, long userId) {
         log.info("Creating booking {} for user {}", createRequest, userId);
 
-        User booker = this.userRepository.findById(userId)
-                .orElseThrow(() -> new NotFoundException("User with id %s not found".formatted(userId)));
+        if (!createRequest.getStart().isBefore(createRequest.getEnd())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                                              "Start date must be before end date");
+        }
 
-        Item item = this.itemRepository.findById(createRequest.getItemId())
-                .orElseThrow(() -> new NotFoundException(
-                        "Item with id %s not found".formatted(createRequest.getItemId())));
+        User booker = this.getUserOrElseThrow(userId);
+        Item item = this.getItemOrElseThrow(createRequest);
 
         if (!item.getAvailable()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Item is not available for booking");
         }
 
-        Booking booking = new Booking();
-        booking.setStart(createRequest.getStart());
-        booking.setEnd(createRequest.getEnd());
-        booking.setBooker(booker);
-        booking.setItem(item);
-        booking.setStatus(Booking.BookingStatus.WAITING);
+        Booking booking = BookingMapper.fromDto(createRequest, booker, item);
 
         Booking saved = this.bookingRepository.save(booking);
         return BookingMapper.toDto(saved);
+    }
+
+    private Item getItemOrElseThrow(BookingCreateDto createRequest) {
+        return this.itemRepository.findById(createRequest.getItemId())
+                .orElseThrow(() -> new NotFoundException(
+                        "Item with id %s not found".formatted(createRequest.getItemId())));
+    }
+
+    private User getUserOrElseThrow(long userId) {
+        return this.userRepository.findById(userId)
+                .orElseThrow(() -> new NotFoundException("User with id %s not found".formatted(userId)));
     }
 
     @Override
     public BookingDto approveBooking(long bookingId, boolean approved, long userId) {
         log.info("Approving booking {} by user {}", bookingId, userId);
 
-        Booking booking = this.bookingRepository.findById(bookingId)
-                .orElseThrow(() -> new NotFoundException("Booking with id %s not found".formatted(bookingId)));
+        Booking booking = this.getBookingOrElseThrow(bookingId);
 
         if (booking.getItem().getOwner().getId() != userId) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only owner can approve booking");
-
+        }
+        if (booking.getStatus() != Booking.BookingStatus.WAITING) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Booking is not in waiting state");
         }
 
         if (approved) {
@@ -81,12 +89,16 @@ public class BookingServiceImpl implements BookingService {
         return BookingMapper.toDto(updated);
     }
 
+    private Booking getBookingOrElseThrow(long bookingId) {
+        return this.bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new NotFoundException("Booking with id %s not found".formatted(bookingId)));
+    }
+
     @Override
     public BookingDto getBookingById(long bookingId, long userId) {
         log.info("Getting booking {} for user {}", bookingId, userId);
 
-        Booking booking = this.bookingRepository.findById(bookingId)
-                .orElseThrow(() -> new NotFoundException("Booking with id %s not found".formatted(bookingId)));
+        Booking booking = this.getBookingOrElseThrow(bookingId);
 
         if (booking.getBooker().getId() != userId && booking.getItem().getOwner().getId() != userId) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only owner or booker can get booking");
@@ -99,14 +111,12 @@ public class BookingServiceImpl implements BookingService {
     public Collection<BookingDto> getBookingsByBooker(long userId, String state) {
         log.info("Getting bookings for booker {} with state {}", userId, state);
 
-        this.userRepository.findById(userId)
-                .orElseThrow(() -> new NotFoundException("User with id %s not found".formatted(userId)));
+        this.getUserOrElseThrow(userId);
 
         LocalDateTime now = LocalDateTime.now();
-        Collection<Booking> bookings = this.bookingRepository.findByBookerIdOrderByStartDesc(userId);
+        Collection<Booking> bookings = this.bookingRepository.findByBookerIdAndState(userId, state, now);
 
         return bookings.stream()
-                .filter(b -> this.matchesState(b, state, now))
                 .map(BookingMapper::toDto)
                 .collect(Collectors.toList());
     }
@@ -115,27 +125,14 @@ public class BookingServiceImpl implements BookingService {
     public Collection<BookingDto> getBookingsByOwner(long userId, String state) {
         log.info("Getting bookings for owner {} with state {}", userId, state);
 
-        this.userRepository.findById(userId)
-                .orElseThrow(() -> new NotFoundException("User with id %s not found".formatted(userId)));
+        this.getUserOrElseThrow(userId);
 
         LocalDateTime now = LocalDateTime.now();
-        Collection<Booking> bookings = this.bookingRepository.findByOwner(userId);
+        Collection<Booking> bookings = this.bookingRepository.findByOwnerIdAndState(userId, state, now);
 
         return bookings.stream()
-                .filter(b -> this.matchesState(b, state, now))
                 .map(BookingMapper::toDto)
                 .collect(Collectors.toList());
     }
 
-    private boolean matchesState(Booking booking, String state, LocalDateTime now) {
-        return switch (state.toUpperCase()) {
-            case "ALL" -> true;
-            case "CURRENT" -> booking.getStart().isBefore(now) && booking.getEnd().isAfter(now);
-            case "PAST" -> booking.getEnd().isBefore(now);
-            case "FUTURE" -> booking.getStart().isAfter(now);
-            case "WAITING" -> booking.getStatus() == Booking.BookingStatus.WAITING;
-            case "REJECTED" -> booking.getStatus() == Booking.BookingStatus.REJECTED;
-            default -> false;
-        };
-    }
 }

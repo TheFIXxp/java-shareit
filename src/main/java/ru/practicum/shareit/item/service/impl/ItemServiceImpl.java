@@ -24,11 +24,8 @@ import ru.practicum.shareit.item.service.ItemService;
 import ru.practicum.shareit.user.model.User;
 import ru.practicum.shareit.user.repository.UserRepository;
 
-import java.time.Instant;
 import java.time.LocalDateTime;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -92,9 +89,38 @@ public class ItemServiceImpl implements ItemService {
     @Override
     public Collection<ItemDto> getItemsByOwner(long userId) {
         log.info("Getting items by owner {}", userId);
-        return this.itemRepository.findByOwner_Id(userId)
-                .stream()
-                .map(this::buildItemDtoWithCommentsAndBookings)
+
+        List<Item> items = this.itemRepository.findByOwner_Id(userId).stream()
+                .toList();
+
+        if (items.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        List<Long> itemIds = items.stream()
+                .map(Item::getId)
+                .collect(Collectors.toList());
+
+        LocalDateTime now = LocalDateTime.now();
+
+        List<Booking> allBookings = this.bookingRepository.findApprovedByItemIds(itemIds);
+        Map<Long, List<Booking>> bookingsByItemId = allBookings.stream()
+                .collect(Collectors.groupingBy(b -> b.getItem().getId(), Collectors.toList()));
+
+        List<Comment> allComments = this.commentRepository.findByItemIds(itemIds);
+        Map<Long, List<CommentDto>> commentsByItemId = allComments.stream()
+                .collect(Collectors.groupingBy(
+                        c -> c.getItem().getId(),
+                        Collectors.mapping(CommentMapper::toDto, Collectors.toList())
+                ));
+
+        return items.stream()
+                .map(item -> this.buildItemDtoWithBookings(
+                        item,
+                        bookingsByItemId.getOrDefault(item.getId(), Collections.emptyList()),
+                        commentsByItemId.getOrDefault(item.getId(), Collections.emptyList()),
+                        now
+                ))
                 .collect(Collectors.toList());
     }
 
@@ -133,11 +159,8 @@ public class ItemServiceImpl implements ItemService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "User has no completed booking for this item");
         }
 
-        Comment comment = new Comment();
-        comment.setText(text);
-        comment.setItem(item);
-        comment.setAuthor(author);
-        comment.setCreated(Instant.now());
+        Comment comment = CommentMapper.from(text, item, author);
+
 
         Comment saved = this.commentRepository.save(comment);
         return CommentMapper.toDto(saved);
@@ -147,20 +170,17 @@ public class ItemServiceImpl implements ItemService {
         return ItemMapper.toDto(item, collectComments(item));
     }
 
-    private ItemDto buildItemDtoWithCommentsAndBookings(Item item) {
-        LocalDateTime now = LocalDateTime.now();
-
-        Booking lastBooking = this.bookingRepository.findLastBookingByItem(item.getId(), now)
-                .stream()
-                .findFirst()
+    private ItemDto buildItemDtoWithBookings(Item item, List<Booking> bookings,
+                                             List<CommentDto> comments, LocalDateTime now) {
+        Booking lastBooking = bookings.stream()
+                .filter(b -> b.getEnd().isBefore(now))
+                .max(Comparator.comparing(Booking::getEnd))
                 .orElse(null);
 
-        Booking nextBooking = this.bookingRepository.findNextBookingByItem(item.getId(), now)
-                .stream()
-                .findFirst()
+        Booking nextBooking = bookings.stream()
+                .filter(b -> b.getStart().isAfter(now))
+                .min(Comparator.comparing(Booking::getStart))
                 .orElse(null);
-
-        List<CommentDto> comments = collectComments(item);
 
         return ItemMapper.toDto(item, lastBooking, nextBooking, comments);
     }
@@ -171,6 +191,4 @@ public class ItemServiceImpl implements ItemService {
                 .map(CommentMapper::toDto)
                 .collect(Collectors.toList());
     }
-
-
 }
